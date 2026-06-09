@@ -1,0 +1,48 @@
+[project]
+name = "litespecformer"
+version = "0.0.2"
+authors = [
+  { name = "whenxuan", email = "wwhenxuan@gmail.com" },
+]
+description = "A lightweight Transformer-based model for spectrum prediction and time series forecasting"
+readme = "README.md"
+license = { text = "Apache License" }
+requires-python = ">=3.11"
+dependencies = [
+  "accelerate==1.12.0",
+  "colorama==0.4.6",
+  "chronos-forecasting==2.2.2",
+  "datasets==4.5.0",
+  "einops==0.8.2",
+  "matplotlib==3.10.8",
+  "numpy==2.4.3",
+  "pandas==3.0.1",
+  "peft==0.18.1",
+  "pysdkit==0.4.23",
+  "safetensors==0.7.0",
+  "scikit_learn==1.8.0",
+  "s2generator==0.0.11",
+  "torch==2.10.0",
+  "tqdm==4.67.1",
+  "transformers==4.57.6",
+  "wandb==0.24.2"
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Mathematics",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Programming Language :: Python :: 3.11",
+]
+
+[project.urls]
+Homepage = "https://github.com/FlowVortex/LiteSpecFormer"
+Issues = "https://github.com/FlowVortex/LiteSpecFormer/issues"
+Repository = "https://github.com/FlowVortex/LiteSpecFormer"
+
+[build-system]
+requires = ["hatchling>=1.17.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/litespecformer"]
