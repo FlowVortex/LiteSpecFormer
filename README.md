@@ -42,7 +42,7 @@ from litespecformer import LiteSpecFormerPipeline
 
 
 # Load our model using our pipeline.
-pipeline = LiteSpecFormerPipeline.from_pretrained("FlowVortex/LiteSpecFormer")
+pipeline = LiteSpecFormerPipeline.from_pretrained("FlowVortex/LiteSpecFormer-1.0-36M")
 
 # Set the context length and prediction length
 context_length = 256
