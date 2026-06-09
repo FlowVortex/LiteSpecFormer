@@ -15,13 +15,13 @@
 [LiteSpecFormer](https://huggingface.co/FlowVortex/LiteSpecFormer-1.0-36M) is the first lightweight wireless foundation model for zero-shot confidence spectrum prediction. Built on a channel-independent Transformer with a sliding autoregressive paradigm and a novel linear correlation loss to mitigate error accumulation, it achieves state-of-the-art performance across arbitrary frequency bands and sequence lengths without downstream fine-tuning.
 
 <div style="text-align: center;">
-    <img src="https://raw.githubusercontent.com/wwhenxuan/PySDKit/main/notebooks/figures/architecture.png" alt="model" style="zoom:60%;" />
+    <img src="https://raw.githubusercontent.com/FlowVortex/LiteSpecFormer/main/notebooks/figures/architecture.png" alt="model" style="zoom:60%;" />
 </div>
 
 We present [Large-Spectrum-Prediction-Dataset (LSPD)](https://huggingface.co/datasets/FlowVortex/Large-Spectrum-Prediction-Dataset), the first large-scale dataset specifically designed for pre-training spectrum prediction foundation models. It comprises 18 billion timestamps and integrates two learnable data generation mechanisms to generate high-quality, diverse spectrum samples.
 
 <div style="text-align: center;">
-    <img src="https://raw.githubusercontent.com/wwhenxuan/PySDKit/main/notebooks/figures/dataset_info.jpg" alt="dataset" style="zoom:90%;" />
+    <img src="https://raw.githubusercontent.com/FlowVortex/LiteSpecFormer/main/notebooks/figures/dataset_info.jpg" alt="dataset" style="zoom:90%;" />
 </div>
 
 ## 🧭 Quickstart
@@ -113,7 +113,7 @@ Other benchmark datasets are available under `scripts/zero_shot_prediction/` (e.
 After large-scale pre-training, LiteSpecFormer achieves stronger out-of-distribution generalization and scalability than existing supervised baselines:
 
 <div style="text-align: center;">
-    <img src="https://raw.githubusercontent.com/wwhenxuan/PySDKit/main/notebooks/figures/benchmark.jpg" alt="benchmark" style="zoom:60%;" />
+    <img src="https://raw.githubusercontent.com/FlowVortex/LiteSpecFormer/main/notebooks/figures/benchmark.jpg" alt="benchmark" style="zoom:60%;" />
 </div>
 
 ### Forecasting Visualization
@@ -121,7 +121,7 @@ After large-scale pre-training, LiteSpecFormer achieves stronger out-of-distribu
 Predictions on the Madrid dataset. Compared with supervised in-distribution models and other out-of-distribution zero-shot baselines, LiteSpecFormer produces more accurate forecasts, especially in fine-grained spectral detail:
 
 <div style="text-align: center;">
-    <img src="https://raw.githubusercontent.com/wwhenxuan/PySDKit/main/notebooks/figures/visualization.jpg" alt="visualization" style="zoom:60%;" />
+    <img src="https://raw.githubusercontent.com/FlowVortex/LiteSpecFormer/main/notebooks/figures/visualization.jpg" alt="visualization" style="zoom:60%;" />
 </div>
 
 <!-- ## 🎓 Citation <a id="Citation"></a>
