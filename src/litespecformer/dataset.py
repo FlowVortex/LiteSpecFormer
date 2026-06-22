@@ -301,7 +301,7 @@ class LiteSpecFormerDataset(IterableDataset):
         prediction_length: int,
         batch_size: int,
         output_patch_size: int,
-        min_past: int = 64,
+        min_past: int = 32,
         mode: str | DatasetMode = DatasetMode.TRAIN,
     ) -> "LiteSpecFormerDataset":
         """Convert from different input formats to a LiteSpecFormerDataset."""

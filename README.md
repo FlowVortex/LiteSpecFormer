@@ -10,6 +10,10 @@
 
 </div>
 
+### 🔥 News
+
+**[Jun. 2026]** We have open-sourced our pre-trained [model](https://huggingface.co/FlowVortex/LiteSpecFormer-1.0-36M) weights and pre-training [dataset](https://huggingface.co/datasets/FlowVortex/Large-Spectrum-Prediction-Dataset) on Hugging Face.
+
 ## ✨Overview
 
 [LiteSpecFormer](https://huggingface.co/FlowVortex/LiteSpecFormer-1.0-36M) is the first lightweight wireless foundation model for zero-shot confidence spectrum prediction. Built on a channel-independent Transformer with a sliding autoregressive paradigm and a novel linear correlation loss to mitigate error accumulation, it achieves state-of-the-art performance across arbitrary frequency bands and sequence lengths without downstream fine-tuning.

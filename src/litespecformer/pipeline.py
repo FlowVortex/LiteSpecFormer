@@ -358,7 +358,7 @@ class LiteSpecFormerPipeline(BaseForecastPipeline):
         num_steps: int = 2560,
         batch_size: int = 256,
         output_dir: Path | str | None = None,
-        min_past: int | None = 64,
+        min_past: int | None = 32,
         callbacks: list["TrainerCallback"] | None = None,
         remove_printer_callback: bool = False,
         disable_data_parallel: bool = True,
@@ -791,6 +791,7 @@ class LiteSpecFormerPipeline(BaseForecastPipeline):
         batch_size: int = 256,
         context_length: int | None = None,
         limit_prediction_length: bool = False,
+        min_past: int = 32,
         **kwargs,
     ) -> list[torch.Tensor]:
         """
@@ -918,6 +919,7 @@ class LiteSpecFormerPipeline(BaseForecastPipeline):
             batch_size=batch_size,
             output_patch_size=self.model_output_patch_size,
             mode=DatasetMode.TEST,
+            min_past=min_past,
         )
 
         # Build a DataLoader for testing
@@ -1140,6 +1142,7 @@ class LiteSpecFormerPipeline(BaseForecastPipeline):
         inputs: TensorOrArray | Sequence[TensorOrArray],
         batch_size: int = 256,
         context_length: int | None = None,
+        min_past: int = 32,
     ) -> tuple[list[torch.Tensor], list[tuple[torch.Tensor, torch.Tensor]]]:
         """
         Get encoder embeddings for the given time series.
@@ -1178,6 +1181,7 @@ class LiteSpecFormerPipeline(BaseForecastPipeline):
             prediction_length=0,
             batch_size=batch_size,
             output_patch_size=self.model_output_patch_size,
+            min_past=min_past,
             mode=DatasetMode.TEST,
         )
         test_loader = DataLoader(
