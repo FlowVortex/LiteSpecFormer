@@ -687,3 +687,8 @@ class SpectrumLibraryDataset(Dataset):
         target
             Future window with shape ``(prediction_length, num_variables)``.
         """
+        # data_y is shifted by seq_length, so the same index pairs a context
+        # window with the future segment that follows it.
+        context = self.data_x[index : index + self.seq_length]
+        target = self.data_y[index : index + self.prediction_length]
+        return context, target

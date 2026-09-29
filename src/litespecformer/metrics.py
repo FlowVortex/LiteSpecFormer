@@ -1,7 +1,22 @@
-from typing import Dict, Union
+from typing import Dict, Sequence, Union
 
 import numpy as np
 import torch
+
+# Quantile levels used by CRPS. The model also predicts 0.05 and 0.95;
+# those two tail levels are left out of the score.
+DEFAULT_QUANTILE_LEVELS = (
+    0.1,
+    0.2,
+    0.3,
+    0.4,
+    0.5,
+    0.6,
+    0.7,
+    0.8,
+    0.9,
+)
+_CRPS_EXCLUDED_QUANTILE_LEVELS = (0.05, 0.95)
 
 
 def mean_squared_error(
@@ -49,14 +64,190 @@ def root_squared_error(
     )
 
 
-def quantile_loss(predictions: np.ndarray, targets: np.ndarray, q: float) -> float:
+def quantile_loss(
+    predictions: torch.Tensor,
+    targets: torch.Tensor,
+    quantile_levels: Union[float, Sequence[float], torch.Tensor],
+) -> torch.Tensor:
     r"""
-    Quantile loss.
+    Element-wise quantile (pinball) loss, scaled by 2.
+
+    This is the integrand of the continuous ranked probability score:
 
     .. math::
-        quantile\_loss = 2 * sum(|(Y - \hat{Y}) * (Y <= \hat{Y}) - q|)
+        z_q(\hat{Y}, Y) = 2 \left|(\hat{Y} - Y)\,(\mathbf{1}\{Y \le \hat{Y}\} - q)\right|
+
+    ``quantile_levels`` may be a scalar or a vector. A vector is broadcast over
+    the quantile axis of ``predictions`` (the second-to-last dimension).
+    CRPS integrates this term over quantile levels; see
+    :func:`continuous_ranked_probability_score`.
     """
-    return 2 * np.sum(np.abs((predictions - targets) * ((targets <= predictions) - q)))
+    levels = torch.as_tensor(
+        quantile_levels, dtype=predictions.dtype, device=predictions.device
+    )
+    if levels.ndim == 0:
+        return 2 * torch.abs(
+            (predictions - targets)
+            * ((targets <= predictions).to(dtype=predictions.dtype) - levels)
+        )
+
+    if levels.ndim != 1:
+        raise ValueError(
+            f"quantile_levels must be a scalar or a 1D vector, got shape {tuple(levels.shape)}"
+        )
+    if predictions.shape[-2] != levels.numel():
+        raise ValueError(
+            "The quantile axis of predictions must match quantile_levels. "
+            f"Got predictions shape {tuple(predictions.shape)} and "
+            f"{levels.numel()} quantile levels."
+        )
+
+    # [..., num_quantiles, prediction_length]
+    targets = targets.unsqueeze(-2)
+    levels = levels.view(*([1] * (predictions.ndim - 2)), -1, 1)
+    return 2 * torch.abs(
+        (predictions - targets)
+        * ((targets <= predictions).to(dtype=predictions.dtype) - levels)
+    )
+
+
+def _crps_trapezoid_weights(quantile_levels: torch.Tensor) -> torch.Tensor:
+    """
+    Normalized trapezoidal weights for integrating the quantile loss into CRPS.
+
+    For sorted levels ``q_i``, the unnormalized bin width is
+    ``(q_{i+1} - q_{i-1}) / 2``, with one-sided differences at the endpoints.
+    Dividing by the total width estimates the integral over ``(0, 1)`` from the
+    levels the model actually predicts, including grids that are tighter in the tails.
+    """
+    num_quantiles = quantile_levels.shape[0]
+    if num_quantiles < 2:
+        return torch.ones(
+            num_quantiles,
+            dtype=quantile_levels.dtype,
+            device=quantile_levels.device,
+        )
+
+    weights = torch.empty(
+        num_quantiles,
+        dtype=quantile_levels.dtype,
+        device=quantile_levels.device,
+    )
+    weights[0] = 0.5 * (quantile_levels[1] - quantile_levels[0])
+    if num_quantiles > 2:
+        weights[1:-1] = 0.5 * (quantile_levels[2:] - quantile_levels[:-2])
+    weights[-1] = 0.5 * (quantile_levels[-1] - quantile_levels[-2])
+    return weights / weights.sum()
+
+
+def _as_quantile_level_list(
+    quantile_levels: Union[Sequence[float], torch.Tensor],
+) -> list[float]:
+    if isinstance(quantile_levels, torch.Tensor):
+        return [float(level) for level in quantile_levels.detach().cpu().reshape(-1)]
+    return [float(level) for level in quantile_levels]
+
+
+def _is_excluded_crps_level(level: float) -> bool:
+    return any(
+        abs(level - excluded) <= 1e-6 for excluded in _CRPS_EXCLUDED_QUANTILE_LEVELS
+    )
+
+
+def _select_crps_quantiles(
+    predictions: torch.Tensor,
+    quantile_levels: Union[Sequence[float], torch.Tensor],
+) -> tuple[torch.Tensor, list[float]]:
+    """Drop the 0.05 and 0.95 forecasts before the CRPS integral."""
+    levels = _as_quantile_level_list(quantile_levels)
+    if len(levels) != predictions.shape[-2]:
+        raise ValueError(
+            "quantile_levels must match the quantile axis of predictions. "
+            f"Got {len(levels)} levels and predictions shape {tuple(predictions.shape)}."
+        )
+    kept_indices = [
+        index
+        for index, level in enumerate(levels)
+        if not _is_excluded_crps_level(level)
+    ]
+    if not kept_indices:
+        raise ValueError(
+            "CRPS needs at least one quantile level other than 0.05 and 0.95."
+        )
+    kept_levels = [levels[index] for index in kept_indices]
+    if len(kept_indices) == len(levels):
+        return predictions, kept_levels
+    index = torch.tensor(kept_indices, device=predictions.device, dtype=torch.long)
+    return predictions.index_select(dim=-2, index=index), kept_levels
+
+
+def continuous_ranked_probability_score(
+    predictions: torch.Tensor,
+    targets: torch.Tensor,
+    quantile_levels: Union[Sequence[float], torch.Tensor] = DEFAULT_QUANTILE_LEVELS,
+) -> torch.Tensor:
+    r"""
+    Mean continuous ranked probability score (CRPS) of a quantile forecast.
+
+    CRPS is the integral of the quantile loss over quantile levels:
+
+    .. math::
+        \mathrm{CRPS}(F, y) = \int_0^1 z_q(F^{-1}(q), y)\,dq
+
+    With a discrete quantile forecast this integral is approximated by a
+    normalized trapezoidal rule on the provided levels. The result is averaged
+    over every batch item, variable, and forecast step. A degenerate forecast
+    that places every quantile on the same value scores CRPS equal to the
+    absolute error, which is the closed-form CRPS of a point mass.
+
+    Parameters
+    ----------
+    predictions
+        Quantile forecasts with shape ``[..., num_quantiles, prediction_length]``.
+    targets
+        Observations with shape ``[..., prediction_length]``.
+    quantile_levels
+        Quantile levels corresponding to the quantile axis of ``predictions``.
+        Levels must lie in ``(0, 1)`` and be strictly increasing after sorting.
+    """
+    if not isinstance(quantile_levels, torch.Tensor):
+        quantile_levels = list(quantile_levels)
+    levels = torch.as_tensor(
+        quantile_levels, dtype=predictions.dtype, device=predictions.device
+    ).reshape(-1)
+
+    if predictions.ndim < 2:
+        raise ValueError(
+            "predictions must have shape [..., num_quantiles, prediction_length], "
+            f"got {tuple(predictions.shape)}"
+        )
+    if levels.numel() != predictions.shape[-2]:
+        raise ValueError(
+            "quantile_levels must match the quantile axis of predictions. "
+            f"Got {levels.numel()} levels and predictions shape {tuple(predictions.shape)}."
+        )
+    expected_target_shape = predictions.shape[:-2] + predictions.shape[-1:]
+    if targets.shape != expected_target_shape:
+        raise ValueError(
+            "targets must have shape [..., prediction_length] matching predictions "
+            f"without the quantile axis. Got targets {tuple(targets.shape)}, "
+            f"expected {tuple(expected_target_shape)}."
+        )
+
+    order = torch.argsort(levels)
+    levels = levels[order]
+    predictions = predictions.index_select(dim=-2, index=order)
+    if levels.numel() > 1 and torch.any(levels[1:] <= levels[:-1]):
+        raise ValueError("quantile_levels must be strictly increasing and unique.")
+    if torch.any(levels <= 0) or torch.any(levels >= 1):
+        raise ValueError("quantile_levels must lie strictly inside (0, 1).")
+
+    pointwise_loss = quantile_loss(predictions, targets, levels)
+    weights = _crps_trapezoid_weights(levels).view(
+        *([1] * (pointwise_loss.ndim - 2)), -1, 1
+    )
+    # Sum over quantile levels (the integral), then average over all other axes.
+    return torch.sum(pointwise_loss * weights, dim=-2).mean()
 
 
 def mean_absolute_scaled_error(
@@ -151,11 +342,13 @@ def calculate_metrics(
     predictions: torch.FloatTensor,
     targets: torch.FloatTensor,
     medium_index: int = 5,
+    quantile_levels: Union[Sequence[float], torch.Tensor] = DEFAULT_QUANTILE_LEVELS,
 ) -> Dict[str, torch.FloatTensor]:
     """
     Calculates a set of common regression metrics between predictions and targets.
     Includes Mean Squared Error (MSE), Mean Absolute Error (MAE), Root Mean Squared Error (RMSE),
-    Mean Absolute Percentage Error (MAPE), Mean Squared Percentage Error (MSPE), and Root Squared Error (RSE).
+    Mean Absolute Percentage Error (MAPE), Mean Squared Percentage Error (MSPE), Root Squared Error (RSE),
+    and Continuous Ranked Probability Score (CRPS).
 
     Parameters
     ----------
@@ -166,7 +359,10 @@ def calculate_metrics(
     targets
         The true values for the test set, expected to have shape [batch_size, num_variables, prediction_length].
     medium_index
-        The index of the median quantile (0.5) in the predictions, used for loss calculation and evaluation (default is 5 for 11 quantiles).
+        The index of the median quantile (0.5) in the predictions, used for point-forecast metrics (default is 5 for 11 quantiles).
+    quantile_levels
+        Quantile levels aligned with the quantile axis of ``predictions``.
+        CRPS uses these levels after dropping 0.05 and 0.95.
 
     Returns
     -------
@@ -178,10 +374,16 @@ def calculate_metrics(
     - "mase": Mean Absolute Scaled Error
     - "mspe": Mean Squared Percentage Error
     - "rse": Root Squared Error
+    - "crps": Continuous Ranked Probability Score
     """
 
     # Input validation
     batch_size, num_variables, context_length = contexts.shape
+    if predictions.ndim != 4:
+        raise ValueError(
+            "predictions must have shape [batch_size, num_variables, num_quantiles, prediction_length], "
+            f"got {tuple(predictions.shape)}"
+        )
     if predictions.shape[0] != batch_size:
         raise ValueError(
             f"Batch size of predictions must match contexts. Got predictions batch size: {predictions.shape[0]}, contexts batch size: {batch_size}"
@@ -191,6 +393,18 @@ def calculate_metrics(
             f"Number of variables in predictions must match contexts. Got predictions num variables: {predictions.shape[1]}, contexts num variables: {num_variables}"
         )
     prediction_length = predictions.shape[-1]
+    if not 0 <= medium_index < predictions.shape[2]:
+        raise ValueError(
+            f"medium_index must address the quantile axis of predictions, got {medium_index} for {predictions.shape[2]} quantiles."
+        )
+
+    # CRPS integrates 0.1 ... 0.9. Point metrics below still use the median forecast.
+    crps_predictions, crps_levels = _select_crps_quantiles(predictions, quantile_levels)
+    crps = continuous_ranked_probability_score(
+        predictions=crps_predictions,
+        targets=targets,
+        quantile_levels=crps_levels,
+    )
 
     # Get the median quantile predictions for metric calculation
     predictions = predictions[:, :, medium_index, :]
@@ -216,4 +430,5 @@ def calculate_metrics(
         ),
         "mspe": mean_squared_percentage_error(predictions, targets),
         "rse": root_squared_error(predictions, targets),
+        "crps": crps,
     }

@@ -80,7 +80,7 @@ args = parser.parse_args()
 #    Build model from config, load local weights, then wrap with pipeline.
 if args.checkpoint_path is None:
     pipeline = LiteSpecFormerPipeline.from_pretrained(
-        "https://huggingface.co/FlowVortex/LiteSpecFormer-1.0-36M", device_map="cuda"
+        "FlowVortex/LiteSpecFormer-1.0-36M", device_map="cuda"
     )
 else:
     # Load serialized parameters from local checkpoint.
@@ -103,4 +103,5 @@ pipeline.evaluate_spectrum_library(
     seq_length=args.seq_length,
     prediction_length=args.prediction_length,
     batch_size=args.batch_size,
+    output_dir=args.output_dir,
 )

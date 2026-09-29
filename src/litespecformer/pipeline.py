@@ -1285,8 +1285,11 @@ class LiteSpecFormerPipeline(BaseForecastPipeline):
             - "MASE": Mean Absolute Scaled Error, which is the mean absolute error of the predictions scaled by the mean absolute error of a naive forecast (e.g., using the last observed value as the forecast).
             - "MSPE": Mean Scaled Pinball Error, which is a common metric for evaluating quantile forecasts, calculated as the pinball loss of the predicted quantiles normalized by the pinball loss of a naive forecast (e.g., using the last observed value as the forecast).
             - "RSE": Relative Squared Error, calculated as the sum of squared errors of the predictions relative to the sum of squared errors of a naive forecast.
+            - "CRPS": Continuous Ranked Probability Score, the integral of the quantile loss over the predicted quantile levels. It scores the full predictive distribution rather than the median forecast alone.
         """
         # Convert inputs to torch tensors if they are numpy arrays
+        if isinstance(contexts, np.ndarray):
+            contexts = torch.from_numpy(contexts).float().to(self.model.device)
         if isinstance(targets, np.ndarray):
             targets = torch.from_numpy(targets).float().to(self.model.device)
         if isinstance(predictions, np.ndarray):
@@ -1296,9 +1299,19 @@ class LiteSpecFormerPipeline(BaseForecastPipeline):
         assert (
             targets.ndim == 3
         ), f"Expected targets to have 3 dimensions (batch_size, num_variables, prediction_length), but got {targets.shape}"
-        # Compute metrics
+        # Compute metrics. CRPS uses the model's quantile grid; point metrics use the median.
+        # Accelerator may wrap the module, so read the forecasting config from the inner model.
+        forecasting_model = self.model
+        if not hasattr(forecasting_model, "forecasting_config") and hasattr(
+            forecasting_model, "module"
+        ):
+            forecasting_model = forecasting_model.module
         return calculate_metrics(
-            contexts=contexts, predictions=predictions, targets=targets
+            contexts=contexts,
+            predictions=predictions,
+            targets=targets,
+            medium_index=forecasting_model.forecasting_config.medium_index,
+            quantile_levels=forecasting_model.forecasting_config.quantiles,
         )
 
     def evaluate_spectrum_library(
@@ -1439,7 +1452,7 @@ class LiteSpecFormerPipeline(BaseForecastPipeline):
             computed_metrics[key] = float(computed_metrics[key])
             accelerator.print(f"\t{key}: {computed_metrics[key]}")
 
-        mse, mae, rmse, mape, mase, mspe, rse = (
+        mse, mae, rmse, mape, mase, mspe, rse, crps = (
             computed_metrics.get("mse"),
             computed_metrics.get("mae"),
             computed_metrics.get("rmse"),
@@ -1447,6 +1460,7 @@ class LiteSpecFormerPipeline(BaseForecastPipeline):
             computed_metrics.get("mase"),
             computed_metrics.get("mspe"),
             computed_metrics.get("rse"),
+            computed_metrics.get("crps"),
         )
 
         # Create output directory if it doesn't exist and save the computed metrics
@@ -1471,6 +1485,7 @@ class LiteSpecFormerPipeline(BaseForecastPipeline):
                     "mase": mase,
                     "mspe": mspe,
                     "rse": rse,
+                    "crps": crps,
                 },
                 f=save_path,
             )
@@ -1492,6 +1507,7 @@ class LiteSpecFormerPipeline(BaseForecastPipeline):
             "mase": mase,
             "mspe": mspe,
             "rse": rse,
+            "crps": crps,
         }
         logging_results(
             accelerator=accelerator,
