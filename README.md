@@ -42,6 +42,7 @@ pip install litespecformer
 Then, you can refer to our [demo](notebooks/demo.ipynb) file to create our pipeline and then use the `prediction` method for zero-shot prediction:
 
 ```python
+import numpy as np
 from s2generator.utils import generate_nonstationary_sine
 from litespecformer import LiteSpecFormerPipeline
 
@@ -51,6 +52,7 @@ pipeline = LiteSpecFormerPipeline.from_pretrained("FlowVortex/LiteSpecFormer-1.0
 
 # Set the context length and prediction length
 context_length = 256
+prediction_length = 96
 # Generate a non-stationary sine wave time series with the specified lengths
 time_series = np.vstack(
     [
