@@ -12,6 +12,8 @@
 
 ### 🔥 News
 
+**[Nov. 2026]** Our paper has been accepted by SCIS 🎉.
+
 **[Jun. 2026]** We have open-sourced our pre-trained [model](https://huggingface.co/FlowVortex/LiteSpecFormer-1.0-36M) weights and pre-training [dataset](https://huggingface.co/datasets/FlowVortex/Large-Spectrum-Prediction-Dataset) on Hugging Face.
 
 ## ✨Overview
